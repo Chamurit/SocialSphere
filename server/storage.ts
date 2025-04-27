@@ -45,7 +45,7 @@ export class MemStorage implements IStorage {
   private userIdCounter: number;
   private projectIdCounter: number;
   private taskIdCounter: number;
-  sessionStore: session.SessionStore;
+  sessionStore: SessionStore;
 
   constructor() {
     this.users = new Map();
@@ -72,7 +72,15 @@ export class MemStorage implements IStorage {
 
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = this.userIdCounter++;
-    const user: User = { ...insertUser, id };
+    const user: User = { 
+      ...insertUser, 
+      id,
+      firstName: insertUser.firstName || null,
+      lastName: insertUser.lastName || null,
+      email: insertUser.email || null,
+      emailNotifications: insertUser.emailNotifications || false,
+      darkMode: insertUser.darkMode || false
+    };
     this.users.set(id, user);
     return user;
   }
@@ -204,7 +212,7 @@ export class MemStorage implements IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
-  sessionStore: session.SessionStore;
+  sessionStore: SessionStore;
 
   constructor() {
     this.sessionStore = new PostgresSessionStore({ 
@@ -281,9 +289,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async countProjectsByUserId(userId: number): Promise<number> {
-    const result = await db.select({ count: db.fn.count() })
+    const result = await db.select({ count: projects.id })
       .from(projects)
-      .where(eq(projects.userId, userId));
+      .where(eq(projects.userId, userId))
+      .count();
     return Number(result[0].count);
   }
 
