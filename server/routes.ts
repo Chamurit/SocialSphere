@@ -311,6 +311,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Temporary download endpoint for project files
+  app.get("/download-project", (req, res) => {
+    const filePath = "/tmp/download/taskflow.tar.gz";
+    res.download(filePath, "taskflow.tar.gz");
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
