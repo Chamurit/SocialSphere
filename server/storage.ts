@@ -1,8 +1,12 @@
 import { users, type User, type InsertUser, projects, type Project, type InsertProject, tasks, type Task, type InsertTask } from "@shared/schema";
-import session from "express-session";
+import session, { Store as SessionStore } from "express-session";
 import createMemoryStore from "memorystore";
+import connectPg from "connect-pg-simple";
+import { db, pool } from "./db";
+import { eq, and } from "drizzle-orm";
 
 const MemoryStore = createMemoryStore(session);
+const PostgresSessionStore = connectPg(session);
 
 // modify the interface with any CRUD methods
 // you might need
@@ -31,7 +35,7 @@ export interface IStorage {
   completeTask(id: number): Promise<Task | undefined>;
 
   // Session store
-  sessionStore: session.SessionStore;
+  sessionStore: SessionStore;
 }
 
 export class MemStorage implements IStorage {
@@ -199,4 +203,161 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage();
+export class DatabaseStorage implements IStorage {
+  sessionStore: session.SessionStore;
+
+  constructor() {
+    this.sessionStore = new PostgresSessionStore({ 
+      pool, 
+      createTableIfMissing: true 
+    });
+  }
+
+  // User methods
+  async getUser(id: number): Promise<User | undefined> {
+    const [user] = await db.select()
+      .from(users)
+      .where(eq(users.id, id));
+    return user;
+  }
+
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const [user] = await db.select()
+      .from(users)
+      .where(eq(users.username, username));
+    return user;
+  }
+
+  async createUser(insertUser: InsertUser): Promise<User> {
+    const [user] = await db.insert(users)
+      .values(insertUser)
+      .returning();
+    return user;
+  }
+
+  async updateUser(id: number, updateData: Partial<User>): Promise<User | undefined> {
+    const [updatedUser] = await db.update(users)
+      .set(updateData)
+      .where(eq(users.id, id))
+      .returning();
+    return updatedUser;
+  }
+
+  // Project methods
+  async createProject(insertProject: InsertProject): Promise<Project> {
+    const [project] = await db.insert(projects)
+      .values(insertProject)
+      .returning();
+    return project;
+  }
+
+  async getProject(id: number): Promise<Project | undefined> {
+    const [project] = await db.select()
+      .from(projects)
+      .where(eq(projects.id, id));
+    return project;
+  }
+
+  async getProjectsByUserId(userId: number): Promise<Project[]> {
+    return db.select()
+      .from(projects)
+      .where(eq(projects.userId, userId));
+  }
+
+  async updateProject(id: number, updateData: Partial<Project>): Promise<Project | undefined> {
+    const [updatedProject] = await db.update(projects)
+      .set(updateData)
+      .where(eq(projects.id, id))
+      .returning();
+    return updatedProject;
+  }
+
+  async deleteProject(id: number): Promise<boolean> {
+    // With cascade set in the schema, this will automatically delete related tasks
+    const result = await db.delete(projects)
+      .where(eq(projects.id, id))
+      .returning({ id: projects.id });
+    return result.length > 0;
+  }
+
+  async countProjectsByUserId(userId: number): Promise<number> {
+    const result = await db.select({ count: db.fn.count() })
+      .from(projects)
+      .where(eq(projects.userId, userId));
+    return Number(result[0].count);
+  }
+
+  // Task methods
+  async createTask(insertTask: InsertTask): Promise<Task> {
+    const [task] = await db.insert(tasks)
+      .values(insertTask)
+      .returning();
+    return task;
+  }
+
+  async getTask(id: number): Promise<Task | undefined> {
+    const [task] = await db.select()
+      .from(tasks)
+      .where(eq(tasks.id, id));
+    return task;
+  }
+
+  async getTasksByUserId(userId: number): Promise<Task[]> {
+    return db.select()
+      .from(tasks)
+      .where(eq(tasks.userId, userId));
+  }
+
+  async getTasksByProjectId(projectId: number): Promise<Task[]> {
+    return db.select()
+      .from(tasks)
+      .where(eq(tasks.projectId, projectId));
+  }
+
+  async updateTask(id: number, updateData: Partial<Task>): Promise<Task | undefined> {
+    // If task is being marked as completed and it wasn't before, set completedAt
+    if (updateData.completed === true) {
+      const [task] = await db.select()
+        .from(tasks)
+        .where(eq(tasks.id, id));
+      
+      if (task && !task.completed) {
+        updateData.completedAt = new Date();
+      }
+    }
+    
+    // If task is being unmarked as completed, clear completedAt
+    if (updateData.completed === false) {
+      updateData.completedAt = null;
+    }
+    
+    const [updatedTask] = await db.update(tasks)
+      .set(updateData)
+      .where(eq(tasks.id, id))
+      .returning();
+    return updatedTask;
+  }
+
+  async deleteTask(id: number): Promise<boolean> {
+    const result = await db.delete(tasks)
+      .where(eq(tasks.id, id))
+      .returning({ id: tasks.id });
+    return result.length > 0;
+  }
+
+  async completeTask(id: number): Promise<Task | undefined> {
+    const now = new Date();
+    const [completedTask] = await db.update(tasks)
+      .set({ 
+        completed: true, 
+        status: "completed", 
+        completedAt: now 
+      })
+      .where(eq(tasks.id, id))
+      .returning();
+    return completedTask;
+  }
+}
+
+// Use database storage instead of memory storage
+export const storage = new DatabaseStorage();

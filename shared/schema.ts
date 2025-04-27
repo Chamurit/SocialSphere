@@ -36,14 +36,7 @@ export const projects = pgTable("projects", {
   dueDate: timestamp("due_date"),
 });
 
-// Project relations
-export const projectsRelations = relations(projects, ({ one, many }) => ({
-  user: one(users, {
-    fields: [projects.userId],
-    references: [users.id],
-  }),
-  tasks: many(tasks),
-}));
+// Will add relations after all tables are defined
 
 export const insertProjectSchema = createInsertSchema(projects).pick({
   name: true,
@@ -67,17 +60,7 @@ export const tasks = pgTable("tasks", {
   dueDate: timestamp("due_date"),
 });
 
-// Task relations
-export const tasksRelations = relations(tasks, ({ one }) => ({
-  user: one(users, {
-    fields: [tasks.userId],
-    references: [users.id],
-  }),
-  project: one(projects, {
-    fields: [tasks.projectId],
-    references: [projects.id],
-  }),
-}));
+// Will add relations after all tables are defined
 
 export const insertTaskSchema = createInsertSchema(tasks).pick({
   title: true,
@@ -102,6 +85,31 @@ export const taskValidationSchema = insertTaskSchema.extend({
   projectId: z.number().min(1, "Project is required"),
   dueDate: z.string().optional().nullable().transform(val => val ? new Date(val) : null),
 });
+
+// Relations defined after all tables are declared
+export const usersRelations = relations(users, ({ many }) => ({
+  projects: many(projects),
+  tasks: many(tasks),
+}));
+
+export const projectsRelations = relations(projects, ({ one, many }) => ({
+  user: one(users, {
+    fields: [projects.userId],
+    references: [users.id],
+  }),
+  tasks: many(tasks),
+}));
+
+export const tasksRelations = relations(tasks, ({ one }) => ({
+  user: one(users, {
+    fields: [tasks.userId],
+    references: [users.id],
+  }),
+  project: one(projects, {
+    fields: [tasks.projectId],
+    references: [projects.id],
+  }),
+}));
 
 // Export types
 export type User = typeof users.$inferSelect;
